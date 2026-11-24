@@ -40,6 +40,39 @@ export async function queueSessionUpload(
   await setSessionStatus(session.clientId, "pending");
 }
 
+/** Encola un registro de peso corporal (recalcula fuerza relativa al drenar). */
+export async function queueBodyWeight(payload: {
+  userId: string;
+  weightKg: number;
+  bodyFatPct?: number | null;
+  recordedAt: string;
+  clientId: string;
+}): Promise<void> {
+  await enqueueOperation({
+    type: "LOG_BODY_WEIGHT",
+    clientId: payload.clientId,
+    payload,
+    attempts: 0,
+    createdAt: Date.now(),
+  });
+  if (typeof navigator === "undefined" || navigator.onLine) void drainQueue();
+}
+
+/** Encola una rutina (generada por el Coach o manual) para guardarla. */
+export async function queueRoutineSave(
+  clientId: string,
+  payload: unknown,
+): Promise<void> {
+  await enqueueOperation({
+    type: "SAVE_ROUTINE",
+    clientId,
+    payload,
+    attempts: 0,
+    createdAt: Date.now(),
+  });
+  if (typeof navigator === "undefined" || navigator.onLine) void drainQueue();
+}
+
 let draining = false;
 
 /**

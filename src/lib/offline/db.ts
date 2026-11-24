@@ -59,7 +59,7 @@ export interface LocalWorkoutSet {
 export interface SyncOperation {
   /** Autoincremental. */
   id?: number;
-  type: "UPSERT_SESSION" | "DELETE_SESSION";
+  type: "UPSERT_SESSION" | "DELETE_SESSION" | "LOG_BODY_WEIGHT" | "SAVE_ROUTINE";
   clientId: string;
   payload: unknown;
   attempts: number;
