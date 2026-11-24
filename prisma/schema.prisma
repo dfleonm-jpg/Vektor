@@ -1,0 +1,266 @@
+// ──────────────────────────────────────────────────────────────
+// Vektor — Esquema de base de datos (Prisma + PostgreSQL / Supabase)
+// Listo para Row Level Security: todas las tablas de datos de usuario
+// cuelgan de userId (= auth.uid() de Supabase).
+// ──────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+enum Goal {
+  HYPERTROPHY // Hipertrofia
+  MAX_STRENGTH // Fuerza máxima
+  RECOMPOSITION // Recomposición
+  HYBRID // Híbrido gimnasio + calistenia
+}
+
+/// Cómo se mide la carga de un ejercicio. Determina qué fórmula de
+/// fuerza relativa aplica el motor de ranking.
+enum LoadType {
+  EXTERNAL // Carga externa: barra, mancuerna, máquina, polea
+  BODYWEIGHT_REPS // Peso corporal por repeticiones (dominadas, fondos, flexiones)
+  WEIGHTED_BODYWEIGHT // Peso corporal + lastre (dominadas/fondos lastrados, muscle-up)
+  ISOMETRIC_HOLD // Isometría cronometrada (L-sit, plancha, front lever)
+}
+
+/// Tipo de serie registrada en el tracker en vivo.
+enum SetType {
+  WARMUP // W — Calentamiento (no cuenta como serie efectiva)
+  WORKING // S — Serie efectiva
+  DROPSET // D — Drop-set
+  FAILURE // F — Al fallo
+}
+
+/// Los 13 grupos musculares del mapa anatómico.
+enum MuscleGroup {
+  CHEST // Pectoral
+  LATS // Dorsal ancho
+  UPPER_BACK // Trapecio / espalda alta
+  FRONT_DELTS // Deltoides anterior
+  SIDE_DELTS // Deltoides lateral
+  REAR_DELTS // Deltoides posterior
+  BICEPS // Bíceps
+  TRICEPS // Tríceps
+  FOREARMS // Antebrazo
+  CORE // Core / abdomen
+  QUADS // Cuádriceps
+  HAMSTRINGS // Isquiotibiales
+  GLUTES // Glúteos
+  CALVES // Gemelos
+}
+
+/// Los 9 rangos competitivos de Vektor.
+enum CompetitiveRank {
+  IRON // Hierro
+  BRONZE // Bronce
+  SILVER // Plata
+  GOLD // Oro
+  PLATINUM // Platino
+  EMERALD // Esmeralda
+  DIAMOND // Diamante
+  MASTER // Maestro
+  SYMMETRIC // Simétrico (tope)
+}
+
+/// Sub-nivel dentro de un rango.
+enum SubTier {
+  I
+  II
+  III
+}
+
+// ─────────────────────────── Modelos ───────────────────────────
+
+/// Perfil del atleta. "id" corresponde al auth.uid() de Supabase.
+model UserProfile {
+  id                 String   @id @db.Uuid
+  email              String   @unique
+  name               String?
+  bodyWeightKg       Float    @default(75)
+  heightCm           Float?
+  age                Int?
+  sex                Sex      @default(MALE)
+  goal               Goal     @default(HYPERTROPHY)
+  equipment          String[] @default([]) // equipamiento disponible (slugs libres)
+  globalRank         CompetitiveRank @default(IRON)
+  globalSubTier      SubTier         @default(I)
+  globalRankProgress Float           @default(0) // 0 - 100 hacia el siguiente escalón
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  bodyMetrics    BodyMetricLog[]
+  sessions       WorkoutSession[]
+  muscleRanks    MuscleRankSnapshot[]
+  routines       Routine[]
+
+  @@map("user_profiles")
+}
+
+/// Historial de peso corporal. Al insertar una fila, la fuerza relativa
+/// se recalcula con el nuevo peso corporal.
+model BodyMetricLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  weightKg   Float
+  bodyFatPct Float?
+  recordedAt DateTime @default(now())
+
+  user UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, recordedAt])
+  @@map("body_metric_logs")
+}
+
+/// Catálogo de ejercicios (precargado vía seed). Los datos del catálogo
+/// son globales (userId null); un usuario puede añadir ejercicios propios.
+model Exercise {
+  id                 String      @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String      @unique
+  primaryMuscle      MuscleGroup
+  secondaryMuscles   MuscleGroup[] @default([])
+  equipment          String // barbell, dumbbell, cable, machine, bodyweight, rings...
+  loadType           LoadType
+  /// Umbrales de fuerza relativa para los 9 rangos.
+  /// Estructura: { "metric": "ratio" | "reps" | "seconds", "thresholds": { "IRON": n, ... "SYMMETRIC": n } }
+  rankThresholdsJson Json
+  instructions       String?
+  isCustom           Boolean     @default(false)
+  createdAt          DateTime    @default(now())
+
+  routineExercises RoutineExercise[]
+  sets             WorkoutSet[]
+
+  @@index([primaryMuscle])
+  @@map("exercises")
+}
+
+/// Plantilla de rutina (mesociclo o split).
+model Routine {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  name        String
+  description String?
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user UserProfile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days RoutineDay[]
+
+  @@index([userId])
+  @@map("routines")
+}
+
+/// Un día de entrenamiento dentro de una rutina (p. ej. "Push", "Pull").
+model RoutineDay {
+  id        String @id @default(uuid()) @db.Uuid
+  routineId String @db.Uuid
+  name      String
+  dayOrder  Int    @default(0)
+
+  routine   Routine           @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  exercises RoutineExercise[]
+  sessions  WorkoutSession[]
+
+  @@index([routineId])
+  @@map("routine_days")
+}
+
+/// Ejercicio prescrito dentro de un día de rutina.
+model RoutineExercise {
+  id             String @id @default(uuid()) @db.Uuid
+  routineDayId   String @db.Uuid
+  exerciseId     String @db.Uuid
+  exerciseOrder  Int    @default(0)
+  targetSets     Int    @default(3)
+  repRangeMin    Int    @default(6)
+  repRangeMax    Int    @default(12)
+  restSeconds    Int    @default(120)
+  targetRir      Int? // RIR objetivo
+
+  day      RoutineDay @relation(fields: [routineDayId], references: [id], onDelete: Cascade)
+  exercise Exercise   @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+
+  @@index([routineDayId])
+  @@map("routine_exercises")
+}
+
+/// Una sesión de entrenamiento registrada.
+model WorkoutSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  routineDayId  String?   @db.Uuid
+  name          String
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  durationSec   Int?
+  totalVolumeKg Float     @default(0)
+  fatigueRpe    Float? // RPE global de la sesión (fatiga percibida)
+  notes         String?
+  /// Marca de sincronización offline-first: id generado en cliente.
+  clientId      String?   @unique
+
+  user       UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routineDay RoutineDay? @relation(fields: [routineDayId], references: [id], onDelete: SetNull)
+  sets       WorkoutSet[]
+
+  @@index([userId, startedAt])
+  @@map("workout_sessions")
+}
+
+/// Una serie individual dentro de una sesión.
+model WorkoutSet {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionId    String   @db.Uuid
+  exerciseId   String   @db.Uuid
+  setOrder     Int
+  setType      SetType  @default(WORKING)
+  weightKg     Float    @default(0) // lastre para calistenia lastrada; 0 en peso corporal puro
+  reps         Int      @default(0)
+  rir          Int? // Reps In Reserve
+  durationSec  Int? // para ejercicios isométricos
+  estimated1Rm Float? // 1RM estimado (o peso total desplazado)
+  isPr         Boolean  @default(false)
+  rankAchieved CompetitiveRank?
+
+  session  WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise Exercise       @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId])
+  @@index([exerciseId])
+  @@map("workout_sets")
+}
+
+/// Instantánea del rango de un grupo muscular para un usuario.
+/// Una fila por (usuario, músculo); se actualiza al cerrar una sesión.
+model MuscleRankSnapshot {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @db.Uuid
+  muscleGroup MuscleGroup
+  currentRank CompetitiveRank @default(IRON)
+  subTier     SubTier         @default(I)
+  progressPct Float           @default(0) // 0 - 100 hacia el siguiente escalón
+  weeklySets  Int             @default(0) // series efectivas en los últimos 7 días
+  updatedAt   DateTime        @updatedAt
+
+  user UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, muscleGroup])
+  @@index([userId])
+  @@map("muscle_rank_snapshots")
+}
