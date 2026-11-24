@@ -281,6 +281,89 @@ export function computeGlobalRank(muscleScores: number[]): RankResult {
 }
 
 // ──────────────────────────────────────────────────────────────
+// 3b. Estado de músculo para la UI (mapa anatómico)
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Rango óptimo de series semanales por músculo para hipertrofia.
+ * Por debajo del mínimo se considera subentrenado; por encima del máximo,
+ * posible exceso de volumen.
+ */
+export const OPTIMAL_WEEKLY_SETS = { min: 10, max: 20 } as const;
+
+/** Umbral de progreso a partir del cual el músculo "pulsa" (a punto de subir). */
+export const NEAR_RANK_UP_PCT = 85;
+
+/**
+ * Estado de un grupo muscular, consumido por `AnatomyMap` y el drawer de
+ * detalle. Es el contrato único entre el motor y la UI: el Paso 3 produce
+ * estos objetos a partir de los `WorkoutSet` reales y los pasa tal cual al mapa.
+ */
+export interface MuscleRankState {
+  /** Rango actual del músculo. */
+  rank: CompetitiveRank;
+  /** Sub-nivel dentro del rango. */
+  subTier: SubTier;
+  /** Progreso 0-100 hacia el siguiente escalón. */
+  progressPct: number;
+  /** Puntuación normalizada 0-100 (para comparar contra el rango global). */
+  normalizedScore: number;
+  /** Series efectivas acumuladas en los últimos 7 días. */
+  weeklySets: number;
+  /** Mejor PR histórico del músculo (texto listo para mostrar), o null. */
+  bestPrLabel: string | null;
+  /** Ejercicios principales asignados al músculo (nombres). */
+  exercises: string[];
+  /** true si el músculo aún no tiene registros (estado base/neutro). */
+  hasData: boolean;
+}
+
+/** Estado base/neutro para un músculo sin registros: Hierro I, sin datos. */
+export function neutralMuscleState(): MuscleRankState {
+  return {
+    rank: "IRON",
+    subTier: "I",
+    progressPct: 0,
+    normalizedScore: 0,
+    weeklySets: 0,
+    bestPrLabel: null,
+    exercises: [],
+    hasData: false,
+  };
+}
+
+/** Si el progreso del músculo indica que está a punto de subir de escalón. */
+export function isNearRankUp(progressPct: number): boolean {
+  return progressPct >= NEAR_RANK_UP_PCT;
+}
+
+/**
+ * Un músculo está "rezagado" si su puntuación normalizada queda un margen
+ * por debajo de la del rango global del atleta.
+ *
+ * @param muscleScore Puntuación normalizada 0-100 del músculo.
+ * @param globalScore Puntuación normalizada 0-100 del rango global.
+ * @param marginPct   Margen tolerado antes de marcar rezago (por defecto 1 banda ≈ 11).
+ */
+export function isLaggingMuscle(
+  muscleScore: number,
+  globalScore: number,
+  marginPct = 100 / COMPETITIVE_RANKS.length,
+): boolean {
+  if (muscleScore <= 0) return false;
+  return muscleScore < globalScore - marginPct;
+}
+
+/** Clasificación del volumen semanal frente al rango óptimo de hipertrofia. */
+export type VolumeStatus = "UNDER" | "OPTIMAL" | "OVER";
+
+export function classifyWeeklyVolume(weeklySets: number): VolumeStatus {
+  if (weeklySets < OPTIMAL_WEEKLY_SETS.min) return "UNDER";
+  if (weeklySets > OPTIMAL_WEEKLY_SETS.max) return "OVER";
+  return "OPTIMAL";
+}
+
+// ──────────────────────────────────────────────────────────────
 // 4. Sobrecarga progresiva (doble progresión)
 // ──────────────────────────────────────────────────────────────
 

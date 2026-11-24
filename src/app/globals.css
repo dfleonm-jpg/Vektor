@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/*
+ * Vektor — Sistema de diseño.
+ * Minimalismo técnico, alto contraste, modo oscuro nativo por defecto.
+ */
+
+@theme {
+  /* Fondos y superficies */
+  --color-obsidian: #09090b;
+  --color-surface: #121215;
+  --color-border: #27272a;
+
+  /* Texto */
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+
+  /* Acentos */
+  --color-volt: #00e5ff;
+  --color-electric: #3b82f6;
+
+  /* Los 9 rangos competitivos */
+  --color-rank-iron: #71717a;
+  --color-rank-bronze: #b45309;
+  --color-rank-silver: #cbd5e1;
+  --color-rank-gold: #eab308;
+  --color-rank-platinum: #2dd4bf;
+  --color-rank-emerald: #10b981;
+  --color-rank-diamond: #38bdf8;
+  --color-rank-master: #a855f7;
+  --color-rank-symmetric: #f43f5e;
+  --color-rank-symmetric-to: #f59e0b;
+
+  /* Tipografía */
+  --font-sans: "Inter", "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-obsidian);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  /* Soporte de áreas seguras en iOS standalone. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Números tabulares para pesos, reps, tiempos y porcentajes. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
